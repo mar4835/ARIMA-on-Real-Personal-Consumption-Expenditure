@@ -1,0 +1,114 @@
+---
+title: "Assignment 5-ARIMA"
+author: "Marleny Tochihuitl-Mendoza"
+date: "2025-04-02"
+output: html_document
+---
+
+```{r}
+library(fpp)
+library(fpp2)
+library(forecast)
+library(knitr)
+RealPCE <- read.csv("/Users/marleny/Downloads/Rutgers\ 24-25/TimeSeriesModeling/HW4/Consumption.csv", header = TRUE)
+
+names(RealPCE)[1] <- "DATE"
+names(RealPCE)[2] <- "Real Personal Consumption Expenditure in USD"
+RealPCE$DATE <- as.Date(RealPCE$DATE)
+RealPCE$'Real Personal Consumption Expenditure in USD' <- as.numeric(RealPCE$'Real Personal Consumption Expenditure in USD')
+kable(RealPCE, caption = "Table: Real Personal Consumption Expenditure in USD")
+RealPCE.ts <-ts(RealPCE[,2], start = c(2014,4), end = c(2024,4), frequency = 4)
+RealPCE.ts
+plot(RealPCE.ts, main = "Real Personal Consumption Expendtiure in the US")
+adf.test(RealPCE.ts)
+```
+
+#### P-value >0.05 so we need differencing 
+
+```{r}
+nsdiffs(RealPCE.ts)
+ndiffs(RealPCE.ts)
+ndiffs((diff(RealPCE.ts,4)))
+RealPCEdiff1 <- diff(RealPCE.ts,lag=4)
+tsdisplay(RealPCEdiff1)
+# nsdiffs of 1 signifies we need a seasonal differencing of 1. ndiffs is also 1, shows we need one regular difference. However, after applying the seasonal difference no additional regular difference is required.
+```
+
+#### To see if more differences are needed I ran the following. The kpss p-value is 0.1, which is greater than 0.05 and adf p-value is 0.01, which is less than 0.05 so no further differencing is needed. Furthermore, Acf only showed 2 significant lags, may benefit from a window to eliminate effects of the pandemic.
+
+```{r}
+ndiffs(RealPCEdiff1)
+kpss.test(RealPCEdiff1)
+adf.test(RealPCEdiff1)
+plot(RealPCEdiff1, main = "Time Series using Differencing")
+```
+
+### ARIMA Model
+
+```{r}
+autofit_PCE <- auto.arima(RealPCE.ts, trace = TRUE, stepwise = FALSE)
+autofit_PCE
+```
+
+
+### Residual Analysis
+#### Acf: all lags are insiginificant. 
+#### Box test: suggests that the residuals are uncorrelated(good)
+#### Plot.ts: From 2014 to around 2019 most residuals are near 0. In 2020 the model overpredicts as the residuals are in the -300s, this is due to the global pandemic of COVID-19. After that residuals are between 0 and 200 for a few years until around 2022 in which residuals begin stablizing and centering between around -50 and 50. 
+#### Histogram: residuals have a right-skew with a few extreme residuals on the lower end(from the pandemic). However, bulk of the residuals are centered around zero, which is good.
+
+```{r}
+Acf(autofit_PCE$residuals)
+Box.test(residuals(autofit_PCE), lag=20, type="Ljung")
+plot.ts(residuals(autofit_PCE), main = "Residuals of ARIMA model")
+hist(autofit_PCE$residuals, main = "Residuals of ARIMA model")
+tsdiag(autofit_PCE)
+```
+
+### Forecasting and Accuracy
+
+#### MAPE is only 1% which is a good sign that the model has a low percentage error so the forecacst is accurate. 
+```{r}
+plot(RealPCE.ts, main = "Real Personal Consumption Expendtiure in the US")
+lines(autofit_PCE$fitted, col ="red")
+forecast_arima.PCE<-forecast(autofit_PCE,h=5)
+plot(forecast_arima.PCE)
+forecast_arima.PCE
+accuracy(forecast_arima.PCE)
+```
+
+### ARIMA using window function
+```{r}
+PCE_window <- window(RealPCE.ts,start=c(2021,1))
+PCE_window
+plot(PCE_window, main = "Real Personal Consumption Expenditure in the US, starting 2021 Q2")
+nsdiffs(PCE_window)
+ndiffs(PCE_window)
+Acf(PCE_window)
+#Acf shows nothing significant
+arima_PCEwindow<-auto.arima(PCE_window)
+plot(PCE_window, main = "Real Personal Consumption Expenditure in the US, starting 2021 Q2")
+lines(arima_PCEwindow$fitted, col = "red")
+```
+
+### Residual Analysis 
+#### Histogram appears to have more of a bell curve than the previous ARIMA model without the windows function. 
+```{r}
+Acf(arima_PCEwindow$residuals)
+Box.test(residuals(autofit_PCE), lag=20, type="Ljung")
+plot.ts(residuals(arima_PCEwindow), main = "Residuals of ARIMA model")
+hist(arima_PCEwindow$residuals, main = "Residuals of ARIMA model")
+tsdiag(arima_PCEwindow)
+```
+
+### Forecasting and Accuracy
+
+```{r}
+forecast_window<-forecast(arima_PCEwindow,h=5)
+plot(forecast_window)
+forecast_window
+accuracy(forecast_window)
+#MAPE improved to 0.386 rather than 1.04
+```
+```
+
